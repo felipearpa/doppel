@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from doppel.cli import run
+from doppel.treesitter import parser_for
 from helpers import commit_all, git, write_source
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -365,7 +366,8 @@ def test_given_an_extra_spec_file_when_help_runs_then_it_is_listed_with_its_exte
     finally:
         specs.cache_clear()
 
-    assert "Languages: Kotlin (.kt), Standin (.si .sin)" in capsys.readouterr().out
+    [languages] = [line for line in capsys.readouterr().out.splitlines() if line.startswith("Languages: ")]
+    assert "Standin (.si .sin)" in languages
 
 
 def test_given_an_edit_above_the_current_directory_when_doppel_runs_with_changed_functions_on_it_then_its_group_is_listed(tmp_path, capsys, monkeypatch):
@@ -618,3 +620,36 @@ def test_given_a_scanned_folder_outside_the_current_directory_when_doppel_runs_t
 
     lib = (tmp_path / "lib").resolve().as_posix()
     assert listed_groups(capsys.readouterr().out) == [("X.kt", ["XCopy.kt"]), (f"{lib}/Y.kt", [f"{lib}/YCopy.kt"])]
+
+
+@pytest.fixture
+def no_download(monkeypatch):
+    """Every parser download fails, as with no network, and no parser is already loaded."""
+
+    import tree_sitter_language_pack
+
+    def fail(names):
+        raise tree_sitter_language_pack.DownloadError("Download error: io: Connection refused (os error 61)")
+
+    monkeypatch.setattr(tree_sitter_language_pack, "download", fail)
+    parser_for.cache_clear()
+    yield
+    parser_for.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("name", "source", "language"),
+    [("Orders.kt", TOTALS, "Kotlin"), ("Orders.fs", "let total orders = List.sum orders\n", "F#")],
+)
+def test_given_a_parser_that_cannot_be_downloaded_when_doppel_runs_then_it_names_the_language_and_the_reason_and_exits_1(name, source, language, no_download, tmp_path, capsys, monkeypatch):
+    write_source(tmp_path, name, source)
+    write_source(tmp_path, name.replace("Orders", "Copy"), source)
+    monkeypatch.chdir(tmp_path)
+
+    assert run([]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"doppel: the {language} parser cannot be loaded: Download error: io: Connection refused (os error 61)\n"
+    )

@@ -2,10 +2,11 @@
 """Normalize a tree-sitter tree, reading each node type's role from the spec.
 
 The name in call position stays: `filter` in `filter(xs)`, the `foo` in
-`a.b.foo(x)`. Local names, type names, a member that is only read, and
-literals become generic markers. Comments and unnamed tokens are dropped,
-except the operators and keywords the spec keeps. A literal with an
-interpolated part keeps its structure, so a call inside it counts.
+`a.b.foo(x)`, and each child a spec names when a call has several. Local
+names, type names, a member that is only read, and literals become generic
+markers. Comments and unnamed tokens are dropped, except the operators and
+keywords the spec keeps and the tokens it lists as identifiers. A literal
+with an interpolated part keeps its structure, so a call inside it counts.
 Parentheses around one expression are unwrapped. Two functions that call the
 same operations in the same shape therefore share a fingerprint set even when
 their locals differ.
@@ -23,14 +24,15 @@ _PENDING = object()
 def _leaf(node, head: bool, data: bytes, spec: LanguageSpec):
     if node.type in spec.comments:
         return None
-    if not node.is_named:
-        if node.type in spec.kept_tokens:
-            return [K("symbol"), node.type]
-        return None
+    # A grammar may give a name as a token, not a named node.
     if node.type in spec.identifiers:
         if head:
             return [K("symbol"), node_text(data, node)]
         return K("symbol")
+    if not node.is_named:
+        if node.type in spec.kept_tokens:
+            return [K("symbol"), node.type]
+        return None
     if node.type in spec.literals and not any(
         child.type in spec.interpolations for child in node.children
     ):
@@ -47,7 +49,9 @@ def _callee_ids(node, head: bool, spec: LanguageSpec) -> set[int]:
         return {child.id for child in node.children}
     else:
         return set()
-    return set() if target is None else {target.id}
+    if target is None:
+        return set()
+    return {child.id for child in target} if isinstance(target, tuple) else {target.id}
 
 
 def _assemble(node, spec: LanguageSpec, done: dict):

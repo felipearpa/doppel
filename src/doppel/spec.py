@@ -50,13 +50,19 @@ class LanguageSpec:
     `src` is walked). That first part is context only, never a reason to
     skip: a spec may read it as a parent such as `src`, and applies its
     folder and file-name rules to the parts after it.
-    `candidates` returns the nodes to compare under a parsed root: a
-    `CandidateRule`, or a small function when data is not enough.
-    `named_by` returns the child of a candidate that holds its name, or None
-    when it has none; the name is printed as the source writes it.
+    `candidates` returns the functions to compare under a parsed root: a
+    `CandidateRule`, or a small function when data is not enough. Each is a
+    node, or a tuple of nodes, its pieces in source order, when the grammar
+    does not give a function one node of its own: the engine joins the pieces
+    under one head, and the function's lines run from its first piece to its
+    last. Either way, a function ends at its last line that is not a comment.
+    `named_by` returns, for a candidate as `candidates` gives it, the node
+    that holds its name, or None when it has none; the name is printed as
+    the source writes it.
 
     The rest give node types their role in normalization. `calls` maps each
-    call node type to a function returning the child that names the callee.
+    call node type to a function returning the child that names the callee,
+    a tuple of children when several are in call position, or None.
     `members` maps each member-access node type to a function returning the
     child that holds the member's name, which is kept when it is called.
     `kept_tokens` are the unnamed tokens kept as structure: operators, and

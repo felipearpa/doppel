@@ -4,12 +4,19 @@
 from functools import lru_cache
 
 
+class ParserUnavailable(Exception):
+    """A grammar's parser could not be downloaded or loaded; the message says why."""
+
+
 @lru_cache(maxsize=None)
 def parser_for(language: str):
-    from tree_sitter_language_pack import download, get_parser
+    from tree_sitter_language_pack import Error, download, get_parser
 
-    download([language])
-    return get_parser(language)
+    try:
+        download([language])
+        return get_parser(language)
+    except Error as exc:
+        raise ParserUnavailable(str(exc)) from exc
 
 
 def parse(source: str, language: str):

@@ -13,7 +13,7 @@ from doppel.changed import ChangedLines, GitStatusError, changed_files, changed_
 from doppel.discover import iter_source_files, spec_of, specs
 from doppel.model import Entry, Span
 from doppel.report import format_text
-from doppel.scan import display_path, find_duplicates, scan_files, span_of
+from doppel.scan import LanguageUnavailable, display_path, find_duplicates, scan_files, span_of
 
 HELP = """\
 Usage: doppel [options] [path-or-fragment ...]
@@ -62,14 +62,19 @@ Exit codes:
   0  the run finished
   1  usage error (--focus with no path is one), git failing for --changed
      or --changed-functions (outside a git repository, or a committed
-     source file doppel cannot read under --changed-functions), or --focus
-     naming no source file doppel reads
+     source file doppel cannot read under --changed-functions), --focus
+     naming no source file doppel reads, or a language's parser that cannot
+     be loaded (its first download needs the network)
 """
+
+
+def _shown(language: str) -> str:
+    return language.capitalize()
 
 
 def help_text() -> str:
     languages = ", ".join(
-        f"{spec.name.capitalize()} ({' '.join(sorted(spec.extensions))})" for spec in specs()
+        f"{_shown(spec.name)} ({' '.join(sorted(spec.extensions))})" for spec in specs()
     )
     return HELP.format(languages=languages)
 
@@ -328,7 +333,11 @@ def run(argv: list[str] | None = None) -> int:
         print("No source files to analyze.")
         entries, broken, unreadable = [], [], []
     else:
-        entries, broken, unreadable = scan_files(files, root, options.min_lines, options.min_nodes)
+        try:
+            entries, broken, unreadable = scan_files(files, root, options.min_lines, options.min_nodes)
+        except LanguageUnavailable as exc:
+            print(f"doppel: the {_shown(exc.language)} parser cannot be loaded: {exc.reason}", file=sys.stderr)
+            return 1
         for file in unreadable:
             print(f"doppel: {file} cannot be read; skipped", file=sys.stderr)
         for file in broken:

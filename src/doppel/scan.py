@@ -9,6 +9,16 @@ from doppel.discover import spec_of
 from doppel.extract import entries_in_source
 from doppel.model import Duplicate, Entry, Span
 from doppel.shape import jaccard
+from doppel.treesitter import ParserUnavailable
+
+
+class LanguageUnavailable(Exception):
+    """A language whose parser cannot be loaded, named by its spec, and why."""
+
+    def __init__(self, language: str, reason: str):
+        super().__init__(language, reason)
+        self.language = language
+        self.reason = reason
 
 
 def display_path(path: Path, root: Path) -> str:
@@ -31,6 +41,7 @@ def scan_files(
     the files that could not be read.
 
     A file with parse errors is compared as parsed; an unreadable one is left out.
+    Raises LanguageUnavailable when a file's parser cannot be loaded.
     """
 
     entries: list[Entry] = []
@@ -46,7 +57,10 @@ def scan_files(
         except OSError:
             unreadable.append(file)
             continue
-        found, has_error = entries_in_source(spec, source, path, file)
+        try:
+            found, has_error = entries_in_source(spec, source, path, file)
+        except ParserUnavailable as exc:
+            raise LanguageUnavailable(spec.name, str(exc)) from exc
         if has_error:
             broken.append(file)
         entries.extend(entry for entry in found if _keep(entry, min_lines, min_nodes))
